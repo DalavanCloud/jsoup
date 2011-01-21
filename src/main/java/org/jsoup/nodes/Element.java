@@ -314,6 +314,7 @@ public class Element extends Node {
         addSiblingHtml(siblingIndex(), html);
         return this;
     }
+
     
     /**
      * Insert the specified HTML into the DOM after this element (i.e. as a following sibling).
@@ -325,6 +326,19 @@ public class Element extends Node {
         addSiblingHtml(siblingIndex()+1, html);
         return this;
     }
+    
+    /**
+     * Inserts specified node into the DOM after this element (i.e. as a following sibling).
+     * @param node node to insert
+     * @return this element, for chaining
+     * @see #before(Node)
+     */
+    public Element after(Node node) {
+    	parentNode.addChildren(siblingIndex() + 1, node);
+    	return this;
+    }
+    
+    
     
     private void addSiblingHtml(int index, String html) {
         Validate.notNull(html);
