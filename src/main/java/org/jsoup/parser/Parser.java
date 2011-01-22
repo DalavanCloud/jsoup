@@ -136,13 +136,14 @@ public class Parser {
         
         tq.consumeWhitespace();
         Attributes attributes = new Attributes();
+        Tag tag = Tag.valueOf(tagName);
         while (!tq.matchesAny("<", "/>", ">") && !tq.isEmpty()) {
-            Attribute attribute = parseAttribute();
+            Attribute attribute = parseAttribute(tag);
             if (attribute != null)
                 attributes.put(attribute);
         }
 
-        Tag tag = Tag.valueOf(tagName);
+        
         Element child = new Element(tag, baseUri, attributes);
 
         boolean isEmptyElement = tag.isEmpty(); // empty element if empty tag (e.g. img) or self-closed el (<div/>
@@ -179,7 +180,7 @@ public class Parser {
         }
     }
 
-    private Attribute parseAttribute() {
+    private Attribute parseAttribute(Tag tag) {
         tq.consumeWhitespace();
         String key = tq.consumeAttributeKey();
         String value = "";
@@ -194,7 +195,8 @@ public class Parser {
             } else {
                 StringBuilder valueAccum = new StringBuilder();
                 // no ' or " to look for, so scan to end tag or space (or end of stream)
-                while (!tq.matchesAny("<", "/>", ">") && !tq.matchesWhitespace() && !tq.isEmpty()) {
+                // /> allowed only for empty tags
+                while (!(tq.matchesAny("<", ">") || (tag.isEmpty() && tq.matches("/>")))  && !tq.matchesWhitespace() && !tq.isEmpty()) {
                     valueAccum.append(tq.consume());
                 }
                 value = valueAccum.toString();
@@ -214,7 +216,7 @@ public class Parser {
     private void parseTextNode() {
         TextNode textNode;
         // special case: handle string like "hello < there". first char will be "<", because of matchStartTag
-        if (tq.peek() == '<') {
+        if (tq.peek() =='<') {
             tq.advance();
             textNode = new TextNode("<", baseUri);
         } else {
