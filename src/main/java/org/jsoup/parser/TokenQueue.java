@@ -30,7 +30,7 @@ public class TokenQueue {
         return remainingLength() == 0;
     }
     
-    private int remainingLength() {
+    public int remainingLength() {
         return queue.length() - pos;
     }
 
@@ -388,5 +388,13 @@ public class TokenQueue {
     
     public String toString() {
         return queue.substring(pos);
+    }
+    
+    public int pos() {
+    	return pos;
+    }
+    
+    public void setPos(int pos) {
+    	this.pos = pos;
     }
 }
