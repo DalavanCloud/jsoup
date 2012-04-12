@@ -2,11 +2,14 @@ package org.jsoup.select;
 
 import org.jsoup.helper.Validate;
 import org.jsoup.nodes.Element;
+import org.jsoup.nodes.Node;
 
 import java.util.*;
 
 /**
- A list of {@link Element Elements}, with methods that act on every element in the list
+ A list of {@link Element Elements}, with methods that act on every element in the list.
+ <p/>
+ To get an Elements object, use the {@link Element#select(String)} method.
 
  @author Jonathan Hedley, jonathan@hedley.net */
 public class Elements implements List<Element>, Cloneable {
@@ -27,8 +30,6 @@ public class Elements implements List<Element>, Cloneable {
     public Elements(Element... elements) {
         this(Arrays.asList(elements));
     }
-    
-    
     
     @Override
 	public Elements clone() {
@@ -234,6 +235,20 @@ public class Elements implements List<Element>, Cloneable {
     public String toString() {
         return outerHtml();
     }
+
+    /**
+     * Update the tag name of each matched element. For example, to change each {@code <i>} to a {@code <em>}, do
+     * {@code doc.select("i").tagName("em");}
+     * @param tagName the new tag name
+     * @return this, for chaining
+     * @see Element#tagName(String)
+     */
+    public Elements tagName(String tagName) {
+        for (Element element : contents) {
+            element.tagName(tagName);
+        }
+        return this;
+    }
     
     /**
      * Set the inner HTML of each matched element.
@@ -313,6 +328,26 @@ public class Elements implements List<Element>, Cloneable {
         Validate.notEmpty(html);
         for (Element element : contents) {
             element.wrap(html);
+        }
+        return this;
+    }
+
+    /**
+     * Removes the matched elements from the DOM, and moves their children up into their parents. This has the effect of
+     * dropping the elements but keeping their children.
+     * <p/>
+     * This is useful for e.g removing unwanted formatting elements but keeping their contents.
+     * <p/>
+     * E.g. with HTML: {@code <div><font>One</font> <font><a href="/">Two</a></font></div>}<br/>
+     * {@code doc.select("font").unwrap();}<br/>
+     * HTML = {@code <div>One <a href="/">Two</a></div>}
+     *
+     * @return this (for chaining)
+     * @see Node#unwrap
+     */
+    public Elements unwrap() {
+        for (Element element : contents) {
+            element.unwrap();
         }
         return this;
     }
@@ -403,7 +438,7 @@ public class Elements implements List<Element>, Cloneable {
 
     /**
      * Get all of the parents and ancestor elements of the matched elements.
-     * @return
+     * @return all of the parents and ancestor elements of the matched elements
      */
     public Elements parents() {
         HashSet<Element> combo = new LinkedHashSet<Element>();
@@ -428,6 +463,20 @@ public class Elements implements List<Element>, Cloneable {
      */
     public Element last() {
         return contents.isEmpty() ? null : contents.get(contents.size() - 1);
+    }
+
+    /**
+     * Perform a depth-first traversal on each of the selected elements.
+     * @param nodeVisitor the visitor callbacks to perform on each node
+     * @return this, for chaining
+     */
+    public Elements traverse(NodeVisitor nodeVisitor) {
+        Validate.notNull(nodeVisitor);
+        NodeTraversor traversor = new NodeTraversor(nodeVisitor);
+        for (Element el: contents) {
+            traversor.traverse(el);
+        }
+        return this;
     }
 
     // implements List<Element> delegates:

@@ -7,7 +7,6 @@ import java.util.regex.Pattern;
 import org.jsoup.helper.StringUtil;
 import org.jsoup.helper.Validate;
 import org.jsoup.parser.TokenQueue;
-import org.jsoup.select.selectors.*;
 
 /**
  * Parses a CSS selector into an Evaluator tree.
@@ -46,7 +45,7 @@ class QueryParser {
         tq.consumeWhitespace();
 
         if (tq.matchesAny(combinators)) { // if starts with a combinator, use root as elements
-            evals.add(new RootSelector());
+            evals.add(new StructuralEvaluator.Root());
             combinator(tq.consume());
         } else {
             findElements();
@@ -56,15 +55,7 @@ class QueryParser {
             // hierarchy and extras
             boolean seenWhite = tq.consumeWhitespace();
 
-            if (tq.matchChomp(",")) { // group or
-                OrSelector or = new OrSelector(evals);
-                evals.clear();
-                evals.add(or);
-                while (!tq.isEmpty()) {
-                    String subQuery = tq.chompTo(",");
-                    or.add(parse(subQuery));
-                }
-            } else if (tq.matchesAny(combinators)) {
+            if (tq.matchesAny(combinators)) {
                 combinator(tq.consume());
             } else if (seenWhite) {
                 combinator(' ');
@@ -76,31 +67,59 @@ class QueryParser {
         if (evals.size() == 1)
             return evals.get(0);
 
-        return new AndSelector(evals);
+        return new CombiningEvaluator.And(evals);
     }
 
     private void combinator(char combinator) {
         tq.consumeWhitespace();
         String subQuery = consumeSubQuery(); // support multi > childs
-        Evaluator e;
 
-        if (evals.size() == 1)
-            e = evals.get(0);
-        else
-            e = new AndSelector(evals);
+        Evaluator rootEval; // the new topmost evaluator
+        Evaluator currentEval; // the evaluator the new eval will be combined to. could be root, or rightmost or.
+        Evaluator newEval = parse(subQuery); // the evaluator to add into target evaluator
+        boolean replaceRightMost = false;
+
+        if (evals.size() == 1) {
+            rootEval = currentEval = evals.get(0);
+            // make sure OR (,) has precedence:
+            if (rootEval instanceof CombiningEvaluator.Or && combinator != ',') {
+                currentEval = ((CombiningEvaluator.Or) currentEval).rightMostEvaluator();
+                replaceRightMost = true;
+            }
+        }
+        else {
+            rootEval = currentEval = new CombiningEvaluator.And(evals);
+        }
         evals.clear();
-        Evaluator f = parse(subQuery);
 
+        // for most combinators: change the current eval into an AND of the current eval and the new eval
         if (combinator == '>')
-            evals.add(BasicSelector.and(f, new ImmediateParentSelector(e)));
+            currentEval = new CombiningEvaluator.And(newEval, new StructuralEvaluator.ImmediateParent(currentEval));
         else if (combinator == ' ')
-            evals.add(BasicSelector.and(f, new ParentSelector(e)));
+            currentEval = new CombiningEvaluator.And(newEval, new StructuralEvaluator.Parent(currentEval));
         else if (combinator == '+')
-            evals.add(BasicSelector.and(f, new ImmediatePreviousSiblingSelector(e)));
+            currentEval = new CombiningEvaluator.And(newEval, new StructuralEvaluator.ImmediatePreviousSibling(currentEval));
         else if (combinator == '~')
-            evals.add(BasicSelector.and(f, new PreviousSiblingSelector(e)));
+            currentEval = new CombiningEvaluator.And(newEval, new StructuralEvaluator.PreviousSibling(currentEval));
+        else if (combinator == ',') { // group or.
+            CombiningEvaluator.Or or;
+            if (currentEval instanceof CombiningEvaluator.Or) {
+                or = (CombiningEvaluator.Or) currentEval;
+                or.add(newEval);
+            } else {
+                or = new CombiningEvaluator.Or();
+                or.add(currentEval);
+                or.add(newEval);
+            }
+            currentEval = or;
+        }
         else
             throw new Selector.SelectorParseException("Unknown combinator: " + combinator);
+
+        if (replaceRightMost)
+            ((CombiningEvaluator.Or) rootEval).replaceRightMostEvaluator(currentEval);
+        else rootEval = currentEval;
+        evals.add(rootEval);
     }
 
     private String consumeSubQuery() {
@@ -237,7 +256,7 @@ class QueryParser {
         tq.consume(":has");
         String subQuery = tq.chompBalanced('(', ')');
         Validate.notEmpty(subQuery, ":has(el) subselect must not be empty");
-        evals.add(new HasSelector(parse(subQuery)));
+        evals.add(new StructuralEvaluator.Has(parse(subQuery)));
     }
 
     // pseudo selector :contains(text), containsOwn(text)
@@ -269,6 +288,6 @@ class QueryParser {
         String subQuery = tq.chompBalanced('(', ')');
         Validate.notEmpty(subQuery, ":not(selector) subselect must not be empty");
 
-        evals.add(new NotSelector(parse(subQuery)));
+        evals.add(new StructuralEvaluator.Not(parse(subQuery)));
     }
 }

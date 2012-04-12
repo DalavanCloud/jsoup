@@ -2,6 +2,7 @@ package org.jsoup.nodes;
 
 import org.jsoup.helper.StringUtil;
 import org.jsoup.helper.Validate;
+import org.jsoup.parser.Parser;
 import org.jsoup.select.NodeTraversor;
 import org.jsoup.select.NodeVisitor;
 
@@ -44,7 +45,7 @@ public abstract class Node implements Cloneable {
      * Default constructor. Doesn't setup base uri, children, or attributes; use with caution.
      */
     protected Node() {
-        childNodes = Collections.EMPTY_LIST;
+        childNodes = Collections.emptyList();
         attributes = null;
     }
 
@@ -69,7 +70,7 @@ public abstract class Node implements Cloneable {
     public String attr(String attributeKey) {
         Validate.notNull(attributeKey);
 
-        if (hasAttr(attributeKey))
+        if (attributes.hasKey(attributeKey))
             return attributes.get(attributeKey);
         else if (attributeKey.toLowerCase().startsWith("abs:"))
             return absUrl(attributeKey.substring("abs:".length()));
@@ -102,6 +103,12 @@ public abstract class Node implements Cloneable {
      */
     public boolean hasAttr(String attributeKey) {
         Validate.notNull(attributeKey);
+
+        if (attributeKey.toLowerCase().startsWith("abs:")) {
+            String key = attributeKey.substring("abs:".length());
+            if (attributes.hasKey(key) && !absUrl(key).equals(""))
+                return true;
+        }
         return attributes.hasKey(attributeKey);
     }
 
@@ -125,12 +132,20 @@ public abstract class Node implements Cloneable {
     }
 
     /**
-     Update the base URI of this node.
+     Update the base URI of this node and all of its descendants.
      @param baseUri base URI to set
      */
-    public void setBaseUri(String baseUri) {
+    public void setBaseUri(final String baseUri) {
         Validate.notNull(baseUri);
-        this.baseUri = baseUri;
+
+        traverse(new NodeVisitor() {
+            public void head(Node node, int depth) {
+                node.baseUri = baseUri;
+            }
+
+            public void tail(Node node, int depth) {
+            }
+        });
     }
 
     /**
@@ -229,6 +244,127 @@ public abstract class Node implements Cloneable {
     public void remove() {
         Validate.notNull(parentNode);
         parentNode.removeChild(this);
+    }
+
+    /**
+     * Insert the specified HTML into the DOM before this node (i.e. as a preceeding sibling).
+     * @param html HTML to add before this node
+     * @return this node, for chaining
+     * @see #after(String)
+     */
+    public Node before(String html) {
+        addSiblingHtml(siblingIndex(), html);
+        return this;
+    }
+
+    /**
+     * Insert the specified node into the DOM before this node (i.e. as a preceeding sibling).
+     * @param node to add before this node
+     * @return this node, for chaining
+     * @see #after(Node)
+     */
+    public Node before(Node node) {
+        Validate.notNull(node);
+        Validate.notNull(parentNode);
+
+        parentNode.addChildren(siblingIndex(), node);
+        return this;
+    }
+
+    /**
+     * Insert the specified HTML into the DOM after this node (i.e. as a following sibling).
+     * @param html HTML to add after this node
+     * @return this node, for chaining
+     * @see #before(String)
+     */
+    public Node after(String html) {
+        addSiblingHtml(siblingIndex()+1, html);
+        return this;
+    }
+
+    /**
+     * Insert the specified node into the DOM after this node (i.e. as a following sibling).
+     * @param node to add after this node
+     * @return this node, for chaining
+     * @see #before(Node)
+     */
+    public Node after(Node node) {
+        Validate.notNull(node);
+        Validate.notNull(parentNode);
+
+        parentNode.addChildren(siblingIndex()+1, node);
+        return this;
+    }
+
+    private void addSiblingHtml(int index, String html) {
+        Validate.notNull(html);
+        Validate.notNull(parentNode);
+
+        Element context = parent() instanceof Element ? (Element) parent() : null;        
+        List<Node> nodes = Parser.parseFragment(html, context, baseUri());
+        parentNode.addChildren(index, nodes.toArray(new Node[nodes.size()]));
+    }
+
+    /**
+     Wrap the supplied HTML around this node.
+     @param html HTML to wrap around this element, e.g. {@code <div class="head"></div>}. Can be arbitrarily deep.
+     @return this node, for chaining.
+     */
+    public Node wrap(String html) {
+        Validate.notEmpty(html);
+
+        Element context = parent() instanceof Element ? (Element) parent() : null;
+        List<Node> wrapChildren = Parser.parseFragment(html, context, baseUri());
+        Node wrapNode = wrapChildren.get(0);
+        if (wrapNode == null || !(wrapNode instanceof Element)) // nothing to wrap with; noop
+            return null;
+
+        Element wrap = (Element) wrapNode;
+        Element deepest = getDeepChild(wrap);
+        parentNode.replaceChild(this, wrap);
+        deepest.addChildren(this);
+
+        // remainder (unbalanced wrap, like <div></div><p></p> -- The <p> is remainder
+        if (wrapChildren.size() > 0) {
+            for (int i = 0; i < wrapChildren.size(); i++) {
+                Node remainder = wrapChildren.get(i);
+                remainder.parentNode.removeChild(remainder);
+                wrap.appendChild(remainder);
+            }
+        }
+        return this;
+    }
+
+    /**
+     * Removes this node from the DOM, and moves its children up into the node's parent. This has the effect of dropping
+     * the node but keeping its children.
+     * <p/>
+     * For example, with the input html:<br/>
+     * {@code <div>One <span>Two <b>Three</b></span></div>}<br/>
+     * Calling {@code element.unwrap()} on the {@code span} element will result in the html:<br/>
+     * {@code <div>One Two <b>Three</b></div>}<br/>
+     * and the {@code "Two "} {@link TextNode} being returned.
+     * @return the first child of this node, after the node has been unwrapped. Null if the node had no children.
+     * @see #remove()
+     * @see #wrap(String)
+     */
+    public Node unwrap() {
+        Validate.notNull(parentNode);
+
+        int index = siblingIndex;
+        Node firstChild = childNodes.size() > 0 ? childNodes.get(0) : null;
+        parentNode.addChildren(index, this.childNodesAsArray());
+        this.remove();
+
+        return firstChild;
+    }
+
+    private Element getDeepChild(Element el) {
+        List<Element> children = el.children();
+        if (children.size() > 0)
+            return getDeepChild(children.get(0));
+        else
+            return el;
     }
     
     /**
@@ -353,11 +489,23 @@ public abstract class Node implements Cloneable {
     }
 
     /**
+     * Perform a depth-first traversal through this node and its descendants.
+     * @param nodeVisitor the visitor callbacks to perform on each node
+     * @return this node, for chaining
+     */
+    public Node traverse(NodeVisitor nodeVisitor) {
+        Validate.notNull(nodeVisitor);
+        NodeTraversor traversor = new NodeTraversor(nodeVisitor);
+        traversor.traverse(this);
+        return this;
+    }
+
+    /**
      Get the outer HTML of this node.
      @return HTML
      */
     public String outerHtml() {
-        StringBuilder accum = new StringBuilder(32*1024);
+        StringBuilder accum = new StringBuilder(128);
         outerHtml(accum);
         return accum.toString();
     }

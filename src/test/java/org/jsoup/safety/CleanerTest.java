@@ -26,7 +26,7 @@ public class CleanerTest {
     }
 
     @Test public void basicBehaviourTest() {
-        String h = "<div><p><a href='javascript:sendAllMoney()'>Dodgy</a> <A HREF='HTTP://nice.com'>Nice</p><blockquote>Hello</blockquote>";
+        String h = "<div><p><a href='javascript:sendAllMoney()'>Dodgy</a> <A HREF='HTTP://nice.com'>Nice</a></p><blockquote>Hello</blockquote>";
         String cleanHtml = Jsoup.clean(h, Whitelist.basic());
 
         assertEquals("<p><a rel=\"nofollow\">Dodgy</a> <a href=\"http://nice.com\" rel=\"nofollow\">Nice</a></p><blockquote>Hello</blockquote>",
@@ -40,7 +40,7 @@ public class CleanerTest {
     }
     
     @Test public void testRelaxed() {
-        String h = "<h1>Head</h1><td>One<td>Two</td>";
+        String h = "<h1>Head</h1><table><tr><td>One<td>Two</td></tr></table>";
         String cleanHtml = Jsoup.clean(h, Whitelist.relaxed());
         assertEquals("<h1>Head</h1><table><tbody><tr><td>One</td><td>Two</td></tr></tbody></table>", TextUtil.stripNewlines(cleanHtml));
     }
@@ -97,14 +97,29 @@ public class CleanerTest {
     }
     
     @Test public void resolvesRelativeLinks() {
-        String html = "<a href='/foo'>Link</a>";
-        String clean = Jsoup.clean(html, "http://example.com/", Whitelist.basic());
-        assertEquals("<a href=\"http://example.com/foo\" rel=\"nofollow\">Link</a>", clean);
+        String html = "<a href='/foo'>Link</a><img src='/bar'>";
+        String clean = Jsoup.clean(html, "http://example.com/", Whitelist.basicWithImages());
+        assertEquals("<a href=\"http://example.com/foo\" rel=\"nofollow\">Link</a>\n<img src=\"http://example.com/bar\" />", clean);
+    }
+
+    @Test public void preservesRelatedLinksIfConfigured() {
+        String html = "<a href='/foo'>Link</a><img src='/bar'> <img src='javascript:alert()'>";
+        String clean = Jsoup.clean(html, "http://example.com/", Whitelist.basicWithImages().preserveRelativeLinks(true));
+        assertEquals("<a href=\"/foo\" rel=\"nofollow\">Link</a>\n<img src=\"/bar\" /> \n<img />", clean);
     }
     
     @Test public void dropsUnresolvableRelativeLinks() {
         String html = "<a href='/foo'>Link</a>";
         String clean = Jsoup.clean(html, Whitelist.basic());
         assertEquals("<a rel=\"nofollow\">Link</a>", clean);
+    }
+
+    @Test public void handlesCustomProtocols() {
+        String html = "<img src='cid:12345' /> <img src='data:gzzt' />";
+        String dropped = Jsoup.clean(html, Whitelist.basicWithImages());
+        assertEquals("<img /> \n<img />", dropped);
+
+        String preserved = Jsoup.clean(html, Whitelist.basicWithImages().addProtocols("img", "src", "cid", "data"));
+        assertEquals("<img src=\"cid:12345\" /> \n<img src=\"data:gzzt\" />", preserved);
     }
 }

@@ -1,6 +1,7 @@
 package org.jsoup;
 
 import org.jsoup.nodes.Document;
+import org.jsoup.parser.Parser;
 
 import java.net.URL;
 import java.util.Map;
@@ -65,11 +66,37 @@ public interface Connection {
     public Connection referrer(String referrer);
 
     /**
+     * Configures the connection to (not) follow server redirects. By default this is <b>true</b>.
+     * @param followRedirects true if server redirects should be followed.
+     * @return this Connection, for chaining
+     */
+    public Connection followRedirects(boolean followRedirects);
+
+    /**
      * Set the request method to use, GET or POST. Default is GET.
      * @param method HTTP request method
      * @return this Connection, for chaining
      */
     public Connection method(Method method);
+
+    /**
+     * Configures the connection to not throw exceptions when a HTTP error occurs. (4xx - 5xx, e.g. 404 or 500). By
+     * default this is <b>false</b>; an IOException is thrown if an error is encountered. If set to <b>true</b>, the
+     * response is populated with the error body, and the status message will reflect the error.
+     * @param ignoreHttpErrors - false (default) if HTTP errors should be ignored.
+     * @return this Connection, for chaining
+     */
+    public Connection ignoreHttpErrors(boolean ignoreHttpErrors);
+
+    /**
+     * Ignore the document's Content-Type when parsing the response. By default this is <b>false</b>, an unrecognised
+     * content-type will cause an IOException to be thrown. (This is to prevent producing garbage by attempting to parse
+     * a JPEG binary image, for example.) Set to true to force a parse attempt regardless of content type.
+     * @param ignoreContentType set to true if you would like the content type ignored on parsing the response into a
+     * Document.
+     * @return this Connection, for chaining
+     */
+    public Connection ignoreContentType(boolean ignoreContentType);
 
     /**
      * Add a request data parameter. Request parameters are sent in the request query string for GETs, and in the request
@@ -106,12 +133,26 @@ public interface Connection {
     public Connection header(String name, String value);
 
     /**
-     * Set a cookie to be sent in the request
+     * Set a cookie to be sent in the request.
      * @param name name of cookie
      * @param value value of cookie
      * @return this Connection, for chaining
      */
     public Connection cookie(String name, String value);
+
+    /**
+     * Adds each of the supplied cookies to the request.
+     * @param cookies map of cookie name -> value pairs
+     * @return this Connection, for chaining
+     */
+    public Connection cookies(Map<String, String> cookies);
+
+    /**
+     * Provide an alternate parser to use when parsing the response to a Document.
+     * @param parser alternate parser
+     * @return this Connection, for chaining
+     */
+    public Connection parser(Parser parser);
 
     /**
      * Execute the request as a GET, and parse the result.
@@ -276,7 +317,6 @@ public interface Connection {
      * Represents a HTTP request.
      */
     public interface Request extends Base<Request> {
-
         /**
          * Get the request timeout, in milliseconds.
          * @return the timeout in milliseconds.
@@ -291,6 +331,46 @@ public interface Connection {
         public Request timeout(int millis);
 
         /**
+         * Get the current followRedirects configuration.
+         * @return true if followRedirects is enabled.
+         */
+        public boolean followRedirects();
+
+        /**
+         * Configures the request to (not) follow server redirects. By default this is <b>true</b>.
+         *
+         * @param followRedirects true if server redirects should be followed.
+         * @return this Request, for chaining
+         */
+        public Request followRedirects(boolean followRedirects);
+
+        /**
+         * Get the current ignoreHttpErrors configuration.
+         * @return true if errors will be ignored; false (default) if HTTP errors will cause an IOException to be thrown.
+         */
+        public boolean ignoreHttpErrors();
+
+    	/**
+    	 * Configures the request to ignore HTTP errors in the response.
+    	 * @param ignoreHttpErrors set to true to ignore HTTP errors.
+         * @return this Request, for chaining
+    	 */
+        public Request ignoreHttpErrors(boolean ignoreHttpErrors);
+
+        /**
+         * Get the current ignoreContentType configuration.
+         * @return true if invalid content-types will be ignored; false (default) if they will cause an IOException to be thrown.
+         */
+        public boolean ignoreContentType();
+
+        /**
+    	 * Configures the request to ignore the Content-Type of the response.
+    	 * @param ignoreContentType set to true to ignore the contenet type.
+         * @return this Request, for chaining
+    	 */
+        public Request ignoreContentType(boolean ignoreContentType);
+
+        /**
          * Add a data parameter to the request
          * @param keyval data to add.
          * @return this Request, for chaining
@@ -303,14 +383,26 @@ public interface Connection {
          */
         public Collection<KeyVal> data();
 
+        /**
+         * Specify the parser to use when parsing the document.
+         * @param parser parser to use.
+         * @return this Request, for chaining
+         */
+        public Request parser(Parser parser);
+
+        /**
+         * Get the current parser to use when parsing the document.
+         * @return current Parser
+         */
+        public Parser parser();
     }
 
     /**
      * Represents a HTTP response.
      */
     public interface Response extends Base<Response> {
-
-        /**
+    	
+    	/**
          * Get the status code of the response.
          * @return status code
          */
