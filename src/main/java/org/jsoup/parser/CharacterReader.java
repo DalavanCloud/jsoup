@@ -2,8 +2,10 @@ package org.jsoup.parser;
 
 import org.jsoup.helper.Validate;
 
+import java.util.Locale;
+
 /**
- CharacterReader cosumes tokens off a string. To replace the old TokenQueue.
+ CharacterReader consumes tokens off a string. To replace the old TokenQueue.
  */
 class CharacterReader {
     static final char EOF = (char) -1;
@@ -15,8 +17,6 @@ class CharacterReader {
 
     CharacterReader(String input) {
         Validate.notNull(input);
-        input = input.replaceAll("\r\n?", "\n"); // normalise carriage returns to newlines
-
         this.input = input;
         this.length = input.length();
     }
@@ -56,13 +56,13 @@ class CharacterReader {
     }
 
     String consumeAsString() {
-        return input.substring(pos, pos++);
+        return new String(input.substring(pos, pos++));
     }
 
     String consumeTo(char c) {
         int offset = input.indexOf(c, pos);
         if (offset != -1) {
-            String consumed = input.substring(pos, offset);
+            String consumed = new String(input.substring(pos, offset));
             pos += consumed.length();
             return consumed;
         } else {
@@ -73,7 +73,7 @@ class CharacterReader {
     String consumeTo(String seq) {
         int offset = input.indexOf(seq, pos);
         if (offset != -1) {
-            String consumed = input.substring(pos, offset);
+            String consumed = new String(input.substring(pos, offset));
             pos += consumed.length();
             return consumed;
         } else {
@@ -93,11 +93,11 @@ class CharacterReader {
             pos++;
         }
 
-        return pos > start ? input.substring(start, pos) : "";
+        return pos > start ? new String(input.substring(start, pos)) : "";
     }
 
     String consumeToEnd() {
-        String data = input.substring(pos, input.length());
+        String data = new String(input.substring(pos, input.length()));
         pos = input.length();
         return data;
     }
@@ -112,7 +112,27 @@ class CharacterReader {
                 break;
         }
 
-        return input.substring(start, pos);
+        return new String(input.substring(start, pos));
+    }
+
+    String consumeLetterThenDigitSequence() {
+        int start = pos;
+        while (!isEmpty()) {
+            char c = input.charAt(pos);
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))
+                pos++;
+            else
+                break;
+        }
+        while (!isEmpty()) {
+            char c = input.charAt(pos);
+            if (c >= '0' && c <= '9')
+                pos++;
+            else
+                break;
+        }
+
+        return new String(input.substring(start, pos));
     }
 
     String consumeHexSequence() {
@@ -124,7 +144,7 @@ class CharacterReader {
             else
                 break;
         }
-        return input.substring(start, pos);
+        return new String(input.substring(start, pos));
     }
 
     String consumeDigitSequence() {
@@ -136,7 +156,7 @@ class CharacterReader {
             else
                 break;
         }
-        return input.substring(start, pos);
+        return new String(input.substring(start, pos));
     }
 
     boolean matches(char c) {
@@ -198,8 +218,8 @@ class CharacterReader {
 
     boolean containsIgnoreCase(String seq) {
         // used to check presence of </title>, </style>. only finds consistent case.
-        String loScan = seq.toLowerCase();
-        String hiScan = seq.toUpperCase();
+        String loScan = seq.toLowerCase(Locale.ENGLISH);
+        String hiScan = seq.toUpperCase(Locale.ENGLISH);
         return (input.indexOf(loScan, pos) > -1) || (input.indexOf(hiScan, pos) > -1);
     }
 
