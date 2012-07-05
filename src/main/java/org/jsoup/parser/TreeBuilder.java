@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * @author Jonathan Hedley
  */
-abstract class TreeBuilder {
+public abstract class TreeBuilder {
     CharacterReader reader;
     Tokeniser tokeniser;
     protected Document doc; // current doc we are building into

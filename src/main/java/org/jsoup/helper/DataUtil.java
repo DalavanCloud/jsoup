@@ -3,6 +3,7 @@ package org.jsoup.helper;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.parser.Parser;
+import org.jsoup.parser.XmlTreeBuilder;
 
 import java.io.*;
 import java.nio.ByteBuffer;
@@ -72,11 +73,31 @@ public class DataUtil {
     // reads bytes first into a buffer, then decodes with the appropriate charset. done this way to support
     // switching the chartset midstream when a meta http-equiv tag defines the charset.
     static Document parseByteData(ByteBuffer byteData, String charsetName, String baseUri, Parser parser) {
-        String docData;
+        String docData = null;
         Document doc = null;
+        if(parser.getTreeBuilder().getClass() == XmlTreeBuilder.class) {
+        	docData = Charset.forName(defaultCharset).decode(byteData).toString();
+            if (docData.charAt(0) == 65279) {
+                docData = Charset.forName("UTF-16").decode(byteData).toString();
+                charsetName = "UTF-16";
+            }
+            
+
+            if(docData.startsWith("<?xml") && docData.indexOf("?>") != -1) {
+                String desc = docData.substring(0, docData.indexOf("?>"));
+                Pattern p = Pattern.compile("encoding\\s*=\\s*\"([^\"]+)\"");
+                Matcher m = p.matcher(desc);
+                if(m.find()) {
+                	charsetName = m.group(1);
+                }
+                byteData.rewind();
+            }
+        }
+        
         if (charsetName == null) { // determine from meta. safe parse as UTF-8
             // look for <meta http-equiv="Content-Type" content="text/html;charset=gb2312"> or HTML5 <meta charset="gb2312">
             docData = Charset.forName(defaultCharset).decode(byteData).toString();
+            
             doc = parser.parseInput(docData, baseUri);
             Element meta = doc.select("meta[http-equiv=content-type], meta[charset]").first();
             if (meta != null) { // if not found, will keep utf-8 as best attempt
@@ -90,7 +111,7 @@ public class DataUtil {
             }
         } else { // specified by content type header (or by user on file load)
             Validate.notEmpty(charsetName, "Must set charset arg to character set of file to parse. Set to null to attempt to detect from HTML");
-            docData = Charset.forName(charsetName).decode(byteData).toString();
+           	docData = Charset.forName(charsetName).decode(byteData).toString();
         }
         if (doc == null) {
             // there are times where there is a spurious byte-order-mark at the start of the text. Shouldn't be present
