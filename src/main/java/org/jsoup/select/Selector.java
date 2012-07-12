@@ -67,6 +67,17 @@ public class Selector {
 
         this.root = root;
     }
+    
+    private Selector(Evaluator evaluator, Element root) {
+        Validate.notNull(evaluator);
+        Validate.notNull(root);
+
+        this.evaluator = evaluator;
+        this.root = root;
+    }
+
+    
+    
 
     /**
      * Find elements matching selector.
@@ -77,6 +88,10 @@ public class Selector {
      */
     public static Elements select(String query, Element root) {
         return new Selector(query, root).select();
+    }
+    
+    public static Elements select(Evaluator evaluator, Element root) {
+        return new Selector(evaluator, root).select();
     }
 
     /**
@@ -95,6 +110,18 @@ public class Selector {
             elements.addAll(select(query, root));
         }
         return new Elements(elements);
+    }
+    
+    public static Elements select(Evaluator evaluator, Iterable<Element> roots) {
+        Validate.notNull(evaluator);
+        Validate.notNull(roots);
+        LinkedHashSet<Element> elements = new LinkedHashSet<Element>();
+
+        for (Element root : roots) {
+            elements.addAll(select(evaluator, root));
+        }
+        return new Elements(elements);
+
     }
 
     private Elements select() {

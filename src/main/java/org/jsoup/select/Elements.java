@@ -403,6 +403,10 @@ public class Elements implements List<Element>, Cloneable {
     public Elements select(String query) {
         return Selector.select(query, this);
     }
+    
+    public Elements select(Evaluator evaluator) {
+        return Selector.select(evaluator, this);
+    }
 
     /**
      * Remove elements from this list that match the {@link Selector} query.

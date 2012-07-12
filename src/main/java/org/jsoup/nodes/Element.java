@@ -255,6 +255,10 @@ public class Element extends Node {
         return Selector.select(cssQuery, this);
     }
     
+    public Elements select(Evaluator evaluator) {
+        return Selector.select(evaluator, this);
+    }
+    
     /**
      * Add a node child node to this element.
      * 
