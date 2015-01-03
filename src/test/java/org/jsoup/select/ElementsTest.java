@@ -3,8 +3,12 @@ package org.jsoup.select;
 import org.jsoup.Jsoup;
 import org.jsoup.TextUtil;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.FormElement;
 import org.jsoup.nodes.Node;
 import org.junit.Test;
+
+import java.util.List;
+
 import static org.junit.Assert.*;
 
 /**
@@ -156,11 +160,26 @@ public class ElementsTest {
         assertEquals("<p><i><b>This</b></i> is <i><b>jsoup</b></i></p>", doc.body().html());
     }
 
+    @Test public void wrapDiv() {
+        String h = "<p><b>This</b> is <b>jsoup</b>.</p> <p>How do you like it?</p>";
+        Document doc = Jsoup.parse(h);
+        doc.select("p").wrap("<div></div>");
+        assertEquals("<div><p><b>This</b> is <b>jsoup</b>.</p></div> <div><p>How do you like it?</p></div>",
+                TextUtil.stripNewlines(doc.body().html()));
+    }
+
     @Test public void unwrap() {
         String h = "<div><font>One</font> <font><a href=\"/\">Two</a></font></div";
         Document doc = Jsoup.parse(h);
         doc.select("font").unwrap();
         assertEquals("<div>One <a href=\"/\">Two</a></div>", TextUtil.stripNewlines(doc.body().html()));
+    }
+
+    @Test public void unwrapP() {
+        String h = "<p><a>One</a> Two</p> Three <i>Four</i> <p>Fix <i>Six</i></p>";
+        Document doc = Jsoup.parse(h);
+        doc.select("p").unwrap();
+        assertEquals("<a>One</a> Two Three <i>Four</i> Fix <i>Six</i>", TextUtil.stripNewlines(doc.body().html()));
     }
 
     @Test public void empty() {
@@ -236,5 +255,25 @@ public class ElementsTest {
             }
         });
         assertEquals("<div><p><#text></#text></p></div><div><#text></#text></div>", accum.toString());
+    }
+
+    @Test public void forms() {
+        Document doc = Jsoup.parse("<form id=1><input name=q></form><div /><form id=2><input name=f></form>");
+        Elements els = doc.select("*");
+        assertEquals(9, els.size());
+
+        List<FormElement> forms = els.forms();
+        assertEquals(2, forms.size());
+        assertTrue(forms.get(0) != null);
+        assertTrue(forms.get(1) != null);
+        assertEquals("1", forms.get(0).id());
+        assertEquals("2", forms.get(1).id());
+    }
+
+    @Test public void classWithHyphen() {
+        Document doc = Jsoup.parse("<p class='tab-nav'>Check</p>");
+        Elements els = doc.getElementsByClass("tab-nav");
+        assertEquals(1, els.size());
+        assertEquals("Check", els.text());
     }
 }

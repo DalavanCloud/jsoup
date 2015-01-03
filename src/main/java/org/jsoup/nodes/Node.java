@@ -10,6 +10,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -104,7 +105,7 @@ public abstract class Node implements Cloneable {
     public boolean hasAttr(String attributeKey) {
         Validate.notNull(attributeKey);
 
-        if (attributeKey.toLowerCase().startsWith("abs:")) {
+        if (attributeKey.startsWith("abs:")) {
             String key = attributeKey.substring("abs:".length());
             if (attributes.hasKey(key) && !absUrl(key).equals(""))
                 return true;
@@ -196,9 +197,9 @@ public abstract class Node implements Cloneable {
     }
 
     /**
-     Get a child node by index
+     Get a child node by its 0-based index.
      @param index index of child node
-     @return the child node at this index.
+     @return the child node at this index. Throws a {@code IndexOutOfBoundsException} if the index is out of bounds.
      */
     public Node childNode(int index) {
         return childNodes.get(index);
@@ -210,13 +211,32 @@ public abstract class Node implements Cloneable {
      @return list of children. If no children, returns an empty list.
      */
     public List<Node> childNodes() {
-        // actually returns the real list, as this method is hit many times during selection, and so is a GC time-sink
-        // leaving the documentation as is (warning of unmodifiability) to discourage out-of-API modifications
-        return childNodes;
+        return Collections.unmodifiableList(childNodes);
+    }
+
+    /**
+     * Returns a deep copy of this node's children. Changes made to these nodes will not be reflected in the original
+     * nodes
+     * @return a deep copy of this node's children
+     */
+    public List<Node> childNodesCopy() {
+        List<Node> children = new ArrayList<Node>(childNodes.size());
+        for (Node node : childNodes) {
+            children.add(node.clone());
+        }
+        return children;
+    }
+
+    /**
+     * Get the number of child nodes that this node holds.
+     * @return the number of child nodes that this node holds.
+     */
+    public final int childNodeSize() {
+        return childNodes.size();
     }
     
     protected Node[] childNodesAsArray() {
-        return childNodes.toArray(new Node[childNodes().size()]);
+        return childNodes.toArray(new Node[childNodeSize()]);
     }
 
     /**
@@ -224,6 +244,14 @@ public abstract class Node implements Cloneable {
      @return parent node; or null if no parent.
      */
     public Node parent() {
+        return parentNode;
+    }
+
+    /**
+     Gets this node's parent node. Node overridable by extending classes, so useful if you really just need the Node type.
+     @return parent node; or null if no parent.
+     */
+    public final Node parentNode() {
         return parentNode;
     }
     
@@ -425,7 +453,7 @@ public abstract class Node implements Cloneable {
         reindexChildren();
     }
 
-    private void reparentChild(Node child) {
+    protected void reparentChild(Node child) {
         if (child.parentNode != null)
             child.parentNode.removeChild(child);
         child.setParentNode(this);
@@ -529,7 +557,7 @@ public abstract class Node implements Cloneable {
     }
 
     // if this node has no document (or parent), retrieve the default output settings
-    private Document.OutputSettings getOutputSettings() {
+    Document.OutputSettings getOutputSettings() {
         return ownerDocument() != null ? ownerDocument().outputSettings() : (new Document("")).outputSettings();
     }
 
@@ -541,6 +569,7 @@ public abstract class Node implements Cloneable {
 
     abstract void outerHtmlTail(StringBuilder accum, int depth, Document.OutputSettings out);
 
+    @Override
     public String toString() {
         return outerHtml();
     }
@@ -551,9 +580,9 @@ public abstract class Node implements Cloneable {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
         // todo: have nodes hold a child index, compare against that and parent (not children)
-        return false;
+
+        return this == o;
     }
 
     @Override
@@ -574,11 +603,32 @@ public abstract class Node implements Cloneable {
      */
     @Override
     public Node clone() {
-        return doClone(null); // splits for orphan
+        Node thisClone = doClone(null); // splits for orphan
+
+        // Queue up nodes that need their children cloned (BFS).
+        LinkedList<Node> nodesToProcess = new LinkedList<Node>();
+        nodesToProcess.add(thisClone);
+
+        while (!nodesToProcess.isEmpty()) {
+            Node currParent = nodesToProcess.remove();
+
+            for (int i = 0; i < currParent.childNodes.size(); i++) {
+                Node childClone = currParent.childNodes.get(i).doClone(currParent);
+                currParent.childNodes.set(i, childClone);
+                nodesToProcess.add(childClone);
+            }
+        }
+
+        return thisClone;
     }
 
+    /*
+     * Return a clone of the node using the given parent (which can be null).
+     * Not a deep copy of children.
+     */
     protected Node doClone(Node parent) {
         Node clone;
+
         try {
             clone = (Node) super.clone();
         } catch (CloneNotSupportedException e) {
@@ -590,8 +640,9 @@ public abstract class Node implements Cloneable {
         clone.attributes = attributes != null ? attributes.clone() : null;
         clone.baseUri = baseUri;
         clone.childNodes = new ArrayList<Node>(childNodes.size());
+
         for (Node child: childNodes)
-            clone.childNodes.add(child.doClone(clone)); // clone() creates orphans, doClone() keeps parent
+            clone.childNodes.add(child);
 
         return clone;
     }

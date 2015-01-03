@@ -28,13 +28,13 @@ public class NodeTraversor {
         
         while (node != null) {
             visitor.head(node, depth);
-            if (node.childNodes().size() > 0) {
+            if (node.childNodeSize() > 0) {
                 node = node.childNode(0);
                 depth++;
             } else {
                 while (node.nextSibling() == null && depth > 0) {
                     visitor.tail(node, depth);
-                    node = node.parent();
+                    node = node.parentNode();
                     depth--;
                 }
                 visitor.tail(node, depth);

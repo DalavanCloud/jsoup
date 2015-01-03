@@ -4,12 +4,14 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.junit.Test;
+
 import static org.junit.Assert.*;
 
 /**
- Tests that the selector selects correctly.
-
- @author Jonathan Hedley, jonathan@hedley.net */
+ * Tests that the selector selects correctly.
+ *
+ * @author Jonathan Hedley, jonathan@hedley.net
+ */
 public class SelectorTest {
     @Test public void testByTag() {
         Elements els = Jsoup.parse("<div id=1><div id=2><p>Hello</p></div></div><div id=3>").select("div");
@@ -46,7 +48,8 @@ public class SelectorTest {
     }
 
     @Test public void testByAttribute() {
-        String h = "<div Title=Foo /><div Title=Bar /><div Style=Qux /><div title=Bam /><div title=SLAM /><div />";
+        String h = "<div Title=Foo /><div Title=Bar /><div Style=Qux /><div title=Bam /><div title=SLAM />" +
+                "<div data-name='with spaces'/>";
         Document doc = Jsoup.parse(h);
 
         Elements withTitle = doc.select("[title]");
@@ -54,6 +57,16 @@ public class SelectorTest {
 
         Elements foo = doc.select("[title=foo]");
         assertEquals(1, foo.size());
+
+        Elements foo2 = doc.select("[title=\"foo\"]");
+        assertEquals(1, foo2.size());
+
+        Elements foo3 = doc.select("[title=\"Foo\"]");
+        assertEquals(1, foo3.size());
+
+        Elements dataName = doc.select("[data-name=\"with spaces\"]");
+        assertEquals(1, dataName.size());
+        assertEquals("with spaces", dataName.first().attr("data-name"));
 
         Elements not = doc.select("div[title!=bar]");
         assertEquals(5, not.size());
@@ -597,5 +610,12 @@ public class SelectorTest {
         assertEquals("div", containers.get(0).tagName());
         assertEquals("li", containers.get(1).tagName());
         assertEquals("123", containers.get(1).text());
+    }
+
+    @Test public void selectSupplementaryCharacter() {
+        String s = new String(Character.toChars(135361));
+        Document doc = Jsoup.parse("<div k" + s + "='" + s + "'>^" + s +"$/div>");
+        assertEquals("div", doc.select("div[k" + s + "]").first().tagName());
+        assertEquals("div", doc.select("div:containsOwn(" + s + ")").first().tagName());
     }
 }

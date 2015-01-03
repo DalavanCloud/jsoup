@@ -4,10 +4,7 @@ import org.jsoup.helper.StringUtil;
 import org.jsoup.helper.Validate;
 import org.jsoup.parser.Parser;
 import org.jsoup.parser.Tag;
-import org.jsoup.select.Collector;
-import org.jsoup.select.Elements;
-import org.jsoup.select.Evaluator;
-import org.jsoup.select.Selector;
+import org.jsoup.select.*;
 
 import java.util.*;
 import java.util.regex.Pattern;
@@ -23,8 +20,6 @@ import java.util.regex.PatternSyntaxException;
  */
 public class Element extends Node {
     private Tag tag;
-    private Set<String> classNames;
-    
     /**
      * Create a new, standalone Element. (Standalone in that is has no parent.)
      * 
@@ -167,7 +162,7 @@ public class Element extends Node {
      * a filtered list of children that are elements, and the index is based on that filtered list.
      * 
      * @param index the index number of the element to retrieve
-     * @return the child element, if it exists, or {@code null} if absent.
+     * @return the child element, if it exists, otherwise throws an {@code IndexOutOfBoundsException}
      * @see #childNode(int)
      */
     public Element child(int index) {
@@ -184,7 +179,7 @@ public class Element extends Node {
      */
     public Elements children() {
         // create on the fly rather than maintaining two lists. if gets slow, memoize, and mark dirty on change
-        List<Element> elements = new ArrayList<Element>();
+        List<Element> elements = new ArrayList<Element>(childNodes.size());
         for (Node node : childNodes) {
             if (node instanceof Element)
                 elements.add((Element) node);
@@ -262,26 +257,51 @@ public class Element extends Node {
     /**
      * Add a node child node to this element.
      * 
-     * @param child node to add. Must not already have a parent.
+     * @param child node to add.
      * @return this element, so that you can add more child nodes or elements.
      */
     public Element appendChild(Node child) {
         Validate.notNull(child);
-        
-        addChildren(child);
+
+        // was - Node#addChildren(child). short-circuits an array create and a loop.
+        reparentChild(child);
+        childNodes.add(child);
+        child.setSiblingIndex(childNodes.size()-1);
         return this;
     }
-    
+
     /**
      * Add a node to the start of this element's children.
      * 
-     * @param child node to add. Must not already have a parent.
+     * @param child node to add.
      * @return this element, so that you can add more child nodes or elements.
      */
     public Element prependChild(Node child) {
         Validate.notNull(child);
         
         addChildren(0, child);
+        return this;
+    }
+
+
+    /**
+     * Inserts the given child nodes into this element at the specified index. Current nodes will be shifted to the
+     * right. The inserted nodes will be moved from their current parent. To prevent moving, copy the nodes first.
+     *
+     * @param index 0-based index to insert children at. Specify {@code 0} to insert at the start, {@code -1} at the
+     * end
+     * @param children child nodes to insert
+     * @return this element, for chaining.
+     */
+    public Element insertChildren(int index, Collection<? extends Node> children) {
+        Validate.notNull(children, "Children collection to be inserted must not be null.");
+        int currentSize = childNodeSize();
+        if (index < 0) index += currentSize +1; // roll around
+        Validate.isTrue(index >= 0 && index <= currentSize, "Insert position out of bounds.");
+
+        ArrayList<Node> nodes = new ArrayList<Node>(children);
+        Node[] nodeArray = nodes.toArray(new Node[nodes.size()]);
+        addChildren(index, nodeArray);
         return this;
     }
     
@@ -364,7 +384,7 @@ public class Element extends Node {
     }
 
     /**
-     * Insert the specified HTML into the DOM before this element (i.e. as a preceding sibling).
+     * Insert the specified HTML into the DOM before this element (as a preceding sibling).
      *
      * @param html HTML to add before this element
      * @return this element, for chaining
@@ -376,7 +396,7 @@ public class Element extends Node {
     }
 
     /**
-     * Insert the specified node into the DOM before this node (i.e. as a preceding sibling).
+     * Insert the specified node into the DOM before this node (as a preceding sibling).
      * @param node to add before this element
      * @return this Element, for chaining
      * @see #after(Node)
@@ -387,7 +407,7 @@ public class Element extends Node {
     }
 
     /**
-     * Insert the specified HTML into the DOM after this element (i.e. as a following sibling).
+     * Insert the specified HTML into the DOM after this element (as a following sibling).
      *
      * @param html HTML to add after this element
      * @return this element, for chaining
@@ -399,7 +419,7 @@ public class Element extends Node {
     }
 
     /**
-     * Insert the specified node into the DOM after this node (i.e. as a following sibling).
+     * Insert the specified node into the DOM after this node (as a following sibling).
      * @param node to add after this element
      * @return this element, for chaining
      * @see #before(Node)
@@ -427,6 +447,34 @@ public class Element extends Node {
     @Override
     public Element wrap(String html) {
         return (Element) super.wrap(html);
+    }
+
+    /**
+     * Get a CSS selector that will uniquely select this element.
+     * <p/>If the element has an ID, returns #id;
+     * otherwise returns the parent (if any) CSS selector, followed by '>',
+     * followed by a unique selector for the element (tag.class.class:nth-child(n)).
+     *
+     * @return the CSS Path that can be used to retrieve the element in a selector.
+     */
+    public String cssSelector() {
+        if (id().length() > 0)
+            return "#" + id();
+
+        StringBuilder selector = new StringBuilder(tagName());
+        String classes = StringUtil.join(classNames(), ".");
+        if (classes.length() > 0)
+            selector.append('.').append(classes);
+
+        if (parent() == null || parent() instanceof Document) // don't add Document to selector, as will always have a html node
+            return selector.toString();
+
+        selector.insert(0, " > ");
+        if (parent().select(selector.toString()).size() > 1)
+            selector.append(String.format(
+                ":nth-child(%d)", elementSiblingIndex() + 1));
+
+        return parent().cssSelector() + selector.toString();
     }
 
     /**
@@ -791,34 +839,34 @@ public class Element extends Node {
     }
 
     /**
-     * Gets the combined text of this element and all its children.
+     * Gets the combined text of this element and all its children. Whitespace is normalized and trimmed.
      * <p>
-     * For example, given HTML {@code <p>Hello <b>there</b> now!</p>}, {@code p.text()} returns {@code "Hello there now!"}
+     * For example, given HTML {@code <p>Hello  <b>there</b> now! </p>}, {@code p.text()} returns {@code "Hello there now!"}
      *
      * @return unencoded text, or empty string if none.
      * @see #ownText()
      * @see #textNodes()
      */
     public String text() {
-        StringBuilder sb = new StringBuilder();
-        text(sb);
-        return sb.toString().trim();
-    }
-
-    private void text(StringBuilder accum) {
-        appendWhitespaceIfBr(this, accum);
-        
-        for (Node child : childNodes) {
-            if (child instanceof TextNode) {
-                TextNode textNode = (TextNode) child;
-                appendNormalisedText(accum, textNode);
-            } else if (child instanceof Element) {
-                Element element = (Element) child;
-                if (accum.length() > 0 && element.isBlock() && !TextNode.lastCharIsWhitespace(accum))
-                    accum.append(" ");
-                element.text(accum);
+        final StringBuilder accum = new StringBuilder();
+        new NodeTraversor(new NodeVisitor() {
+            public void head(Node node, int depth) {
+                if (node instanceof TextNode) {
+                    TextNode textNode = (TextNode) node;
+                    appendNormalisedText(accum, textNode);
+                } else if (node instanceof Element) {
+                    Element element = (Element) node;
+                    if (accum.length() > 0 &&
+                        (element.isBlock() || element.tag.getName().equals("br")) &&
+                        !TextNode.lastCharIsWhitespace(accum))
+                        accum.append(" ");
+                }
             }
-        }
+
+            public void tail(Node node, int depth) {
+            }
+        }).traverse(this);
+        return accum.toString().trim();
     }
 
     /**
@@ -849,15 +897,13 @@ public class Element extends Node {
         }
     }
 
-    private void appendNormalisedText(StringBuilder accum, TextNode textNode) {
+    private static void appendNormalisedText(StringBuilder accum, TextNode textNode) {
         String text = textNode.getWholeText();
 
-        if (!preserveWhitespace()) {
-            text = TextNode.normaliseWhitespace(text);
-            if (TextNode.lastCharIsWhitespace(accum))
-                text = TextNode.stripLeadingWhitespace(text);
-        }
-        accum.append(text);
+        if (preserveWhitespace(textNode.parentNode))
+            accum.append(text);
+        else
+            StringUtil.appendNormalisedWhitespace(accum, text, TextNode.lastCharIsWhitespace(accum));
     }
 
     private static void appendWhitespaceIfBr(Element element, StringBuilder accum) {
@@ -865,8 +911,14 @@ public class Element extends Node {
             accum.append(" ");
     }
 
-    boolean preserveWhitespace() {
-        return tag.preserveWhitespace() || parent() != null && parent().preserveWhitespace();
+    static boolean preserveWhitespace(Node node) {
+        // looks only at this element and one level up, to prevent recursion & needless stack searches
+        if (node != null && node instanceof Element) {
+            Element element = (Element) node;
+            return element.tag.preserveWhitespace() ||
+                element.parent() != null && element.parent().tag.preserveWhitespace();
+        }
+        return false;
     }
 
     /**
@@ -931,7 +983,7 @@ public class Element extends Node {
      * @return The literal class attribute, or <b>empty string</b> if no class attribute set.
      */
     public String className() {
-        return attr("class");
+        return attr("class").trim();
     }
 
     /**
@@ -941,10 +993,10 @@ public class Element extends Node {
      * @return set of classnames, empty if no class attribute
      */
     public Set<String> classNames() {
-        if (classNames == null) {
-            String[] names = className().split("\\s+");
-            classNames = new LinkedHashSet<String>(Arrays.asList(names));
-        }
+    	String[] names = className().split("\\s+");
+    	Set<String> classNames = new LinkedHashSet<String>(Arrays.asList(names));
+    	classNames.remove(""); // if classNames() was empty, would include an empty class
+
         return classNames;
     }
 
@@ -1046,22 +1098,29 @@ public class Element extends Node {
     }
 
     void outerHtmlHead(StringBuilder accum, int depth, Document.OutputSettings out) {
-        if (accum.length() > 0 && out.prettyPrint() && (tag.formatAsBlock() || (parent() != null && parent().tag().formatAsBlock())))
+        if (accum.length() > 0 && out.prettyPrint() && (tag.formatAsBlock() || (parent() != null && parent().tag().formatAsBlock()) || out.outline()) )
             indent(accum, depth, out);
         accum
                 .append("<")
                 .append(tagName());
         attributes.html(accum, out);
 
-        if (childNodes.isEmpty() && tag.isSelfClosing())
-            accum.append(" />");
+        // selfclosing includes unknown tags, isEmpty defines tags that are always empty
+        if (childNodes.isEmpty() && tag.isSelfClosing()) {
+            if (out.syntax() == Document.OutputSettings.Syntax.html && tag.isEmpty())
+                accum.append('>');
+            else
+                accum.append(" />"); // <img> in html, <img /> in xml
+        }
         else
             accum.append(">");
     }
 
     void outerHtmlTail(StringBuilder accum, int depth, Document.OutputSettings out) {
         if (!(childNodes.isEmpty() && tag.isSelfClosing())) {
-            if (out.prettyPrint() && !childNodes.isEmpty() && tag.formatAsBlock())
+            if (out.prettyPrint() && (!childNodes.isEmpty() && (
+                    tag.formatAsBlock() || (out.outline() && (childNodes.size()>1 || (childNodes.size()==1 && !(childNodes.get(0) instanceof TextNode))))
+            )))
                 indent(accum, depth, out);
             accum.append("</").append(tagName()).append(">");
         }
@@ -1076,8 +1135,8 @@ public class Element extends Node {
      */
     public String html() {
         StringBuilder accum = new StringBuilder();
-        html(accum); 
-        return accum.toString().trim();
+        html(accum);
+        return getOutputSettings().prettyPrint() ? accum.toString().trim() : accum.toString();
     }
 
     private void html(StringBuilder accum) {
@@ -1117,7 +1176,6 @@ public class Element extends Node {
     @Override
     public Element clone() {
         Element clone = (Element) super.clone();
-        clone.classNames(); // creates linked set of class names from class attribute
         return clone;
     }
 }

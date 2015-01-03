@@ -83,6 +83,36 @@ public class NodeTest {
         assertEquals("odd", el.attr("abs:href"));
     }
 
+    @Test public void handleAbsOnFileUris() {
+        Document doc = Jsoup.parse("<a href='password'>One/a><a href='/var/log/messages'>Two</a>", "file:/etc/");
+        Element one = doc.select("a").first();
+        assertEquals("file:/etc/password", one.absUrl("href"));
+        Element two = doc.select("a").get(1);
+        assertEquals("file:/var/log/messages", two.absUrl("href"));
+    }
+
+    @Test
+    public void handleAbsOnLocalhostFileUris() {
+        Document doc = Jsoup.parse("<a href='password'>One/a><a href='/var/log/messages'>Two</a>", "file://localhost/etc/");
+        Element one = doc.select("a").first();
+        assertEquals("file://localhost/etc/password", one.absUrl("href"));
+    }
+
+    @Test
+    public void handlesAbsOnProtocolessAbsoluteUris() {
+        Document doc1 = Jsoup.parse("<a href='//example.net/foo'>One</a>", "http://example.com/");
+        Document doc2 = Jsoup.parse("<a href='//example.net/foo'>One</a>", "https://example.com/");
+
+        Element one = doc1.select("a").first();
+        Element two = doc2.select("a").first();
+
+        assertEquals("http://example.net/foo", one.absUrl("href"));
+        assertEquals("https://example.net/foo", two.absUrl("href"));
+
+        Document doc3 = Jsoup.parse("<img src=//www.google.com/images/errors/logo_sm.gif alt=Google>", "https://google.com");
+        assertEquals("https://www.google.com/images/errors/logo_sm.gif", doc3.select("img").attr("abs:src"));
+    }
+
     /*
     Test for an issue with Java's abs URL handler.
      */
@@ -206,5 +236,20 @@ public class NodeTest {
         assertEquals(2, nodes.size());
         assertEquals("<p>One</p>", nodes.get(0).outerHtml());
         assertEquals("<p>Three</p>", nodes.get(1).outerHtml());
+    }
+
+    @Test public void childNodesCopy() {
+        Document doc = Jsoup.parse("<div id=1>Text 1 <p>One</p> Text 2 <p>Two<p>Three</div><div id=2>");
+        Element div1 = doc.select("#1").first();
+        Element div2 = doc.select("#2").first();
+        List<Node> divChildren = div1.childNodesCopy();
+        assertEquals(5, divChildren.size());
+        TextNode tn1 = (TextNode) div1.childNode(0);
+        TextNode tn2 = (TextNode) divChildren.get(0);
+        tn2.text("Text 1 updated");
+        assertEquals("Text 1 ", tn1.text());
+        div2.insertChildren(-1, divChildren);
+        assertEquals("<div id=\"1\">Text 1 <p>One</p> Text 2 <p>Two</p><p>Three</p></div><div id=\"2\">Text 1 updated"
+            +"<p>One</p> Text 2 <p>Two</p><p>Three</p></div>", TextUtil.stripNewlines(doc.body().html()));
     }
 }
