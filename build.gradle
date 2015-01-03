@@ -1,0 +1,20 @@
+apply plugin: 'java'
+apply plugin: 'maven'
+
+if(project.hasProperty('standalone')) {
+    group = 'org.jsoup'
+    description = "jsoup"
+    version = '1.8.2-SNAPSHOT'
+    distDir = 'dist'
+
+}
+
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    compile 'junit:junit:4.11'
+}
