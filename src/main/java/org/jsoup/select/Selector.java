@@ -119,10 +119,11 @@ public class Selector {
     public static Elements select(String query, Iterable<Element> roots) {
         Validate.notEmpty(query);
         Validate.notNull(roots);
+        Evaluator evaluator = QueryParser.parse(query);
         LinkedHashSet<Element> elements = new LinkedHashSet<Element>();
 
         for (Element root : roots) {
-            elements.addAll(select(query, root));
+            elements.addAll(select(evaluator, root));
         }
         return new Elements(elements);
     }
